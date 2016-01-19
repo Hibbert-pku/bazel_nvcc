@@ -1,14 +1,18 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 from argparse import ArgumentParser
+from sys import platform as _platform
 import os
 import subprocess
 import re
 import sys
 import pipes
 
-CPU_COMPILER = ('/usr/bin/gcc')
+CPU_COMPILER = ('/usr/bin/g++')
+GCC_COMPILER = ('/usr/bin/gcc')
+OTHER_COMPILER = ('crosstool/osx_wrapper.sh')
 NVCC_PATH = '/usr/local/cuda/bin/nvcc'
+GPP_PATH = '/usr/bin/g++'
 GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 LLVM_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 PREFIX_DIR = os.path.dirname(GCC_HOST_COMPILER_PATH)
@@ -51,6 +55,80 @@ def GetNvccOptions(argv):
   if args.nvcc_options:
     return ' '.join(['--'+a for a in sum(args.nvcc_options, [])])
   return ''
+
+def InvokeGpp(argv, log=False):
+  host_compiler_options = GetHostCompilerOptions(argv)
+  nvcc_compiler_options = GetNvccOptions(argv)
+  opt_option = GetOptionValue(argv, 'O')
+  m_options = GetOptionValue(argv, 'm')
+  m_options = ''.join([' -m' + m for m in m_options if m in ['32', '64']])
+  include_options = GetOptionValue(argv, 'I')
+  out_file = GetOptionValue(argv, 'o')
+  depfiles = GetOptionValue(argv, 'MF')
+  defines = GetOptionValue(argv, 'D')
+  defines = ''.join([' -D' + define for define in defines])
+  undefines = GetOptionValue(argv, 'U')
+  undefines = ''.join([' -U' + define for define in undefines])
+  std_options = GetOptionValue(argv, 'std')
+  # currently only c++11 is supported by Cuda 7.0 std argument
+  nvcc_allowed_std_options = ["c++11"]
+  std_options = ''.join([' -std=' + define
+      for define in std_options if define in nvcc_allowed_std_options])
+
+  # The list of source files get passed after the -c option. I don't know of
+  # any other reliable way to just get the list of source files to be compiled.
+  src_files = GetOptionValue(argv, 'c')
+  if len(src_files) == 0:
+    return 1
+  if len(out_file) != 1:
+    return 1
+  opt = (' -O2' if (len(opt_option) > 0 and int(opt_option[0]) > 0)
+         else ' -g')
+  includes = (' -I ' + ' -I '.join(include_options)
+              if len(include_options) > 0
+              else '')
+  # Unfortunately, there are other options that have -c prefix too.
+  # So allowing only those look like C/C++ files.
+  src_files = [f for f in src_files if
+               re.search('\.cpp$|\.cc$|\.c$|\.cxx$|\.C$', f)]
+  srcs = ' '.join(src_files)
+  out = ' -o ' + out_file[0]
+  # "configure" uses the specific format to substitute the following string.
+  # If you change it, make sure you modify "configure" as well.
+  supported_cuda_compute_capabilities = [ "3.5", "5.2" ]
+  nvccopts = ''
+  for capability in supported_cuda_compute_capabilities:
+    capability = capability.replace('.', '')
+  #  nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
+  #      capability, capability, capability)
+  #nvccopts += ' ' + nvcc_compiler_options
+  #nvccopts += undefines
+  nvccopts += defines
+  nvccopts += std_options
+  #nvccopts += m_options
+  nvccopts += " -I/usr/local/include -isystem /include -I../external/googletest -fPIC"
+  if _platform != 'darwin':
+    nvccopts += " -iquote bazel-out/local_linux-fastbuild/genfiles -iquote bazel-out/local_linux-dbg/genfiles"
+  else:
+    nvccopts += " -iquote bazel-out/local_darwin-fastbuild/genfiles -iquote bazel-out/local_darwin-dbg/genfiles"
+  if depfiles:
+    # Generate the dependency file
+    depfile = depfiles[0]
+    cmd = (GPP_PATH + ' ' + nvccopts +
+           ' -I .' +
+           includes + ' ' + srcs + ' -M -o ' + depfile)
+    if log: Log(cmd)
+    exit_status = os.system(cmd)
+    if exit_status != 0:
+      return exit_status
+
+  cmd = (GPP_PATH + ' ' + nvccopts +
+         ' -I .' +
+         opt + includes + ' -c ' + srcs + out)
+
+  cmd = 'PATH=' + PREFIX_DIR + ' ' + cmd
+  if log: Log(cmd)
+  return os.system(cmd)
 
 def InvokeNvcc(argv, log=False):
   host_compiler_options = GetHostCompilerOptions(argv)
@@ -95,13 +173,18 @@ def InvokeNvcc(argv, log=False):
   nvccopts = ''
   for capability in supported_cuda_compute_capabilities:
     capability = capability.replace('.', '')
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
-  nvccopts += ' ' + nvcc_compiler_options
-  nvccopts += undefines
+  #  nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
+  #      capability, capability, capability)
+  #nvccopts += ' ' + nvcc_compiler_options
+  #nvccopts += undefines
   nvccopts += defines
   nvccopts += std_options
-  nvccopts += m_options
+  #nvccopts += m_options
+  nvccopts += " --disable-warnings -lineinfo -I/usr/local/include -isystem /include"
+  if _platform != 'darwin':
+    nvccopts += " -Ibazel-out/local_linux-fastbuild/genfiles -Ibazel-out/local_linux-dbg/genfiles"
+  else:
+    nvccopts += " -Ibazel-out/local_darwin-fastbuild/genfiles -Ibazel-out/local_darwin-dbg/genfiles"
   if depfiles:
     # Generate the dependency file
     depfile = depfiles[0]
@@ -125,8 +208,8 @@ def InvokeNvcc(argv, log=False):
   if log: Log(cmd)
   return os.system(cmd)
 
-
 def main():
+
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--cuda_log', action='store_true')
@@ -137,12 +220,26 @@ def main():
   src_files = GetOptionValue(leftover, 'c')
   if len(src_files) != 0:
     leftover = [pipes.quote(s) for s in leftover]
-    return InvokeNvcc(leftover, log=args.cuda_log)
+    is_cuda = GetOptionValue(leftover, 'D')
+    for index, flag in enumerate(is_cuda):
+      if 'useCUDA' in flag:
+        return InvokeNvcc(leftover, log=args.cuda_log)
+    return InvokeGpp(leftover, log=args.cuda_log)
 
   cpu_compiler_flags = [flag for flag in sys.argv[1:]]
-  cpu_compiler_flags.append('-L/usr/local/cuda/lib64')
-  cpu_compiler_flags.append('-lcudart')
-  return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
+  cpu_compiler_flags.append('-L/usr/local/lib')
+  cpu_compiler_flags.append('-lprotobuf')
+  cpu_compiler_flags.append('-lglog')
+  com_flag = 0
+  for index, flag in enumerate(cpu_compiler_flags):
+    if 'all_tests' in flag:
+      com_flag = 1
+      break
+  if com_flag and os.name != 'posix':
+    cpu_compiler_flags.append('-Wl,-rpath,$ORIGIN/../../../../bazel-out/local_darwin-fastbuild/bin')
+    return subprocess.call([OTHER_COMPILER] + cpu_compiler_flags)
+  else:
+    return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
 
 if __name__ == '__main__':
   sys.exit(main())
