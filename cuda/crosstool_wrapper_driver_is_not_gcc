@@ -227,9 +227,6 @@ def main():
     return InvokeGpp(leftover, log=args.cuda_log)
 
   cpu_compiler_flags = [flag for flag in sys.argv[1:]]
-  cpu_compiler_flags.append('-L/usr/local/lib')
-  cpu_compiler_flags.append('-lprotobuf')
-  cpu_compiler_flags.append('-lglog')
   com_flag = 0
   for index, flag in enumerate(cpu_compiler_flags):
     if 'all_tests' in flag:

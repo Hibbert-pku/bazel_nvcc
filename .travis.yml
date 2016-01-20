@@ -1,0 +1,25 @@
+language: cpp
+before_install:
+  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+  - sudo apt-add-repository -y ppa:sao/backports
+  - sudo apt-add-repository -y ppa:fcitx-team/nightly
+  - sudo apt-add-repository -y ppa:asolovets/backports
+  - sudo add-apt-repository ppa:apokluda/boost1.53 --yes
+  - wget 'https://github.com/bazelbuild/bazel/releases/download/0.1.0/bazel-0.1.0-installer-linux-x86_64.sh'
+  - chmod +x bazel-0.1.0-installer-linux-x86_64.sh
+  - ./bazel-0.1.0-installer-linux-x86_64.sh --user
+  - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1204/x86_64/cuda-repo-ubuntu1204_7.0-28_amd64.deb
+  - sudo dpkg -i cuda-repo-ubuntu1204_7.0-28_amd64.deb
+  - sudo apt-get update -qq
+  - sudo apt-get install -qq libgflags-dev libgoogle-glog-dev libboost1.53-all-dev g++-4.9 cuda && sudo ldconfig
+install:
+  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 99
+  - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 99
+  - g++ --version
+
+before_script:
+  - export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+  - export LD_LIBRARY_PATH=/usr/local/cuda/nvvm/lib64:$LD_LIBRARY_PATH
+  - export PATH=/usr/local/cuda/bin:$PATH
+script:
+  - bazel build --crosstool_top=//cuda:crosstool tests/...
