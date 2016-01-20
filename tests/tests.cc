@@ -18,7 +18,10 @@ TEST_F(CUDATest, cuda) {
   int *x;
   cudaStream_t stream_;
   cudaStreamCreate(&stream_);
-  cudaMalloc(&x, sizeof(int)*10);
+  cudaError_t err = cudaMalloc(&x, sizeof(int)*10);
+  if (err != cudaSuccess) {
+    exit(-1);
+  }
   kernel<<<1,1,0,stream_>>>(x);
   cudaStreamSynchronize(stream_);
   cudaStreamDestroy(stream_);
