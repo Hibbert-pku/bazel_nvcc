@@ -5,9 +5,9 @@ before_install:
   - sudo apt-add-repository -y ppa:fcitx-team/nightly
   - sudo apt-add-repository -y ppa:asolovets/backports
   - sudo add-apt-repository ppa:apokluda/boost1.53 --yes
-  - wget 'https://github.com/bazelbuild/bazel/releases/download/0.1.0/bazel-0.1.0-installer-linux-x86_64.sh'
-  - chmod +x bazel-0.1.0-installer-linux-x86_64.sh
-  - ./bazel-0.1.0-installer-linux-x86_64.sh --user
+  - wget 'https://github.com/bazelbuild/bazel/releases/download/0.2.1/bazel-0.2.1-jdk7-installer-linux-x86_64.sh'
+  - chmod +x bazel-0.2.1-jdk7-installer-linux-x86_64.sh
+  - ./bazel-0.2.1-jdk7-installer-linux-x86_64.sh --user
   - wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1204/x86_64/cuda-repo-ubuntu1204_7.0-28_amd64.deb
   - sudo dpkg -i cuda-repo-ubuntu1204_7.0-28_amd64.deb
   - sudo apt-get update -qq
@@ -22,4 +22,5 @@ before_script:
   - export LD_LIBRARY_PATH=/usr/local/cuda/nvvm/lib64:$LD_LIBRARY_PATH
   - export PATH=/usr/local/cuda/bin:$PATH
 script:
-  - bazel build --crosstool_top=//cuda:crosstool tests/...
+  - bazel build tests:all --spawn_strategy=standalone --crosstool_top=//crosstool:crosstool --copt=-DuseCUDA
+  - bazel build cuda:all --spawn_strategy=standalone --crosstool_top=//crosstool:crosstool --copt=-DuseCUDA
