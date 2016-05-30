@@ -6,6 +6,6 @@ use nvcc compiler in bazel
 
 # how to build
 
-bazel build --copt=-DuseCUDA --crosstool_top=//cuda:crosstool cuda/...
+bazel build cuda:all
 
-bazel test --crosstool_top=//cuda:crosstool tests/...
+bazel test tests:all
